@@ -191,8 +191,9 @@
          all-passes)
 
 (require nanopass
-         (except-in rnrs guard)
+         racket/fixnum
          (for-syntax syntax/parse
+                     syntax/stx
                      racket/syntax))
 
 ;;; As of yet untested feature for using the boehm GC
@@ -258,22 +259,22 @@
     (define s0
       (lambda (rls)
         (if (null? rls)
-            (error 'base-var "not a unique-var created variable" x)
+            (error 'base-var "not a unique-var created variable ~a" x)
             (let ([c (car rls)])
               (cond
                 [(char-numeric? c) (s1 (cdr rls))]
                 [else (error 'base-var
-                             "not a unique-var created variable" x)])))))
+                             "not a unique-var created variable ~a" x)])))))
     (define s1
       (lambda (rls)
         (if (null? rls)
-            (error 'base-var "not a unique-var created variable" x)
+            (error 'base-var "not a unique-var created variable ~a" x)
             (let ([c (car rls)])
               (cond
                 [(char-numeric? c) (s1 (cdr rls))]
                 [(char=? c #\.) (cdr rls)]
                 [else (error 'base-var
-                             "not a unique-var created variable" x)])))))
+                             "not a unique-var created variable ~a" x)])))))
     (string->symbol
      (list->string
       (reverse 
@@ -371,17 +372,17 @@
 
 ;;; all the non-allocation value primitives, include the closure primitives
 (define closure+void+user-non-alloc-value-prims
-  (cons* '(closure-code . 2) '(closure-ref . 2)
+  (list* '(closure-code . 2) '(closure-ref . 2)
          void+user-non-alloc-value-prims))
 
 ;; all the user effect primitives with the closure primitives
 (define closure+user-effect-prims
-  (cons* '(closure-code-set! . 2) '(closure-data-set! . 3)
+  (list* '(closure-code-set! . 2) '(closure-data-set! . 3)
          user-effect-prims))
 
 ;; all the user effect primitives, closure primitives, and internal primitives
 (define internal+closure+user-effect-prims
-  (cons* '($vector-length-set! . 2) '($set-car! . 2) '($set-cdr! . 2)
+  (list* '($vector-length-set! . 2) '($set-car! . 2) '($set-cdr! . 2)
          closure+user-effect-prims))
 
 ;; association list including all prims except the three final internal
@@ -452,7 +453,7 @@
         (and (pair? x) (datum? (car x)) (datum? (cdr x)))
         (and (vector? x)
              (let loop ([i (vector-length x)])
-               (or (fx=? i 0)
+               (or (fx= i 0)
                    (let ([i (fx- i 1)])
                      (and (datum? (vector-ref x i))
                           (loop i)))))))))
@@ -489,42 +490,42 @@
   (lambda set*
     (if (null? set*)
         '()
-        (fold-left (lambda (seta setb)
-                     (let loop ([seta seta] [fset '()])
-                       (if (null? seta)
-                           fset
-                           (let ([a (car seta)])
-                             (if (memq a setb)
-                                 (loop (cdr seta) (cons a fset))
-                                 (loop (cdr seta) fset))))))
-                   (car set*) (cdr set*)))))
+        (foldl (lambda (setb seta)
+                 (let loop ([seta seta] [fset '()])
+                   (if (null? seta)
+                       fset
+                       (let ([a (car seta)])
+                         (if (memq a setb)
+                             (loop (cdr seta) (cons a fset))
+                             (loop (cdr seta) fset))))))
+               (car set*) (cdr set*)))))
 
 ;;; construct the union of 0 to n sets
 (define union
   (lambda set*
     (if (null? set*)
         '()
-        (fold-left (lambda (seta setb)
-                     (let loop ([setb setb] [seta seta])
-                       (if (null? setb)
-                           seta
-                           (loop (cdr setb) (set-cons (car setb) seta)))))
-                   (car set*) (cdr set*)))))
+        (foldl (lambda (setb seta)
+                 (let loop ([setb setb] [seta seta])
+                   (if (null? setb)
+                       seta
+                       (loop (cdr setb) (set-cons (car setb) seta)))))
+               (car set*) (cdr set*)))))
 
 ;;; construct the difference of 0 to n sets
 (define difference
   (lambda set*
     (if (null? set*)
         '()
-        (fold-right (lambda (setb seta)
-                      (let loop ([seta seta] [final '()])
-                        (if (null? seta)
-                            final
-                            (let ([a (car seta)])
-                              (if (memq a setb)
-                                  (loop (cdr seta) final)
-                                  (loop (cdr seta) (cons a final)))))))
-                    (car set*) (cdr set*)))))
+        (foldr (lambda (setb seta)
+                 (let loop ([seta seta] [final '()])
+                   (if (null? seta)
+                       final
+                       (let ([a (car seta)])
+                         (if (memq a setb)
+                             (loop (cdr seta) final)
+                             (loop (cdr seta) (cons a final)))))))
+               (car set*) (cdr set*)))))
 
 ;;; Language definitions for Lsrc and L1 to L22
 ;;; Both the language extension and the fully specified language is included
@@ -1494,7 +1495,7 @@
     (define unique-vars
       (lambda (env fmls f)
         (unless (vars-unique? fmls)
-          (error 'unique-vars "invalid formals" fmls))
+          (error 'unique-vars "invalid formals ~a" fmls))
         (let loop ([fmls fmls] [env env] [rufmls '()])
           (if (null? fmls)
               (f env (reverse rufmls))
@@ -1547,7 +1548,7 @@
                                 (cons name
                                       (if (< argc 0)
                                           (error who
-                                                 "primitives with arbitrary counts are not currently supported"
+                                                 "primitives with arbitrary counts are not currently supported ~a"
                                                  name)
                                           ;;; we'd love to support arbitrary argument lists, but we'd
                                           ;;; need to either:
@@ -1562,12 +1563,12 @@
                                               (lambda (env . e*)
                                                 (if (>= (length e*) argc)
                                                     `(,name ,(Expr* e* env) ...)
-                                                    (error name "invalid argument count"
+                                                    (error name "invalid argument count ~a"
                                                            (cons name e*)))))
                                           (lambda (env . e*)
                                             (if (= (length e*) argc)
                                                 `(,name ,(Expr* e* env) ...)
-                                                (error name "invalid argument count"
+                                                (error name "invalid argument count ~a"
                                                        (cons name e*)))))))))
                           ;;; initial-env - this is our initial environment, expressed as an
                           ;;; association list of keywords and primitives (represented as
@@ -1576,18 +1577,18 @@
                           ;;; local bidings from variables (represented as symbols) to unique
                           ;;; variables (represented as symbols with a format of symbol.number).
                           (define initial-env
-                            (cons*
+                            (list*
                              (cons 'quote (lambda (env d)
                                             (unless (datum? d)
-                                              (error 'quote "invalid datum" d))
+                                              (error 'quote "invalid datum ~a" d))
                                             `(quote ,d)))
                              (cons 'if (case-lambda
                                          [(env e0 e1) `(if ,(Expr e0 env) ,(Expr e1 env))]
                                          [(env e0 e1 e2)
                                           `(if ,(Expr e0 env) ,(Expr e1 env) ,(Expr e2 env))]
                                          [x (error 'if (if (< (length x) 3)
-                                                           "too few arguments"
-                                                           "too many arguments")
+                                                           "too few arguments ~a"
+                                                           "too many arguments ~a")
                                                    x)]))
                              (cons 'or (lambda (env . e*) `(or ,(Expr* e* env) ...)))
                              (cons 'and (lambda (env . e*) `(and ,(Expr* e* env) ...)))
@@ -1623,9 +1624,9 @@
                                                              (let ([v (cdr as)])
                                                                (if (symbol? v)
                                                                    `(set! ,v ,(Expr e env))
-                                                                   (error 'set! "invalid syntax"
+                                                                   (error 'set! "invalid syntax ~a"
                                                                           (list 'set! x e)))))]
-                                             [else (error 'set! "set to unbound variable"
+                                             [else (error 'set! "set to unbound variable ~a"
                                                           (list 'set! x e))])))
                              (map build-primitive user-prims)))
                           ;;; App - helper for handling applications.
@@ -1658,10 +1659,10 @@
                                (cond
                                  [(symbol? v) v]
                                  [(primitive? e) e]
-                                 [else (error who "invalid syntax" e)])))]
-             [else (error who "unbound variable" e)])]
+                                 [else (error who "invalid syntax ~a" e)])))]
+             [else (error who "unbound variable ~a" e)])]
           [(constant? e) e]
-          [else (error who "invalid expression" e)]))
+          [else (error who "invalid expression ~a" e)]))
   ;;; kick off processing the S-expression by handing Expr our initial
   ;;; S-expression and the initial environment.
   (Expr e initial-env))
@@ -1817,8 +1818,8 @@
                                           (lambda (as)
                                             (do ((i (cdr as) (fx- i 1))
                                                  (x* '() (cons (make-tmp) x*)))
-                                              ((fx=? i 0) `(lambda (,x* ...) (primcall ,pr ,x* ...)))))]
-               [else (error who "unexpected primitive" pr)])]))
+                                              ((fx= i 0) `(lambda (,x* ...) (primcall ,pr ,x* ...)))))]
+               [else (error who "unexpected primitive ~a" pr)])]))
 
 ;;; pass: quote-constants : L4 -> L5
 ;;;
@@ -1875,7 +1876,7 @@
                         ;; 2. set each elemenet in the vector with its recurred
                         ;;    parts.
                         ,(let loop ([l l] [e* '()])
-                           (if (fx=? l 0)
+                           (if (fx= l 0)
                                e*
                                (let ([l (fx- l 1)])
                                  (loop l
@@ -1995,7 +1996,7 @@
   ;; in the body, call 
   (let-values ([(e assigned*) (Expr e)])
     (unless (null? assigned*)
-      (error who "found one or more unbound variables" assigned*))
+      (error who "found one or more unbound variables ~a" assigned*))
     e))
 
 ;;; pass: purify-letrec : L7 -> L8
@@ -2079,8 +2080,8 @@
                          [(quote ,c) #t]
                          [,x (not (or (memq x bound*) (memq x assigned*)))]
                          [(primcall ,pr ,e* ...)
-                          (and (effect-free-prim? pr) (for-all f e*))]
-                         [(begin ,e* ... ,e) (and (for-all f e*) (f e))]
+                          (and (effect-free-prim? pr) (andmap f e*))]
+                         [(begin ,e* ... ,e) (and (andmap f e*) (f e))]
                          [(if ,e0 ,e1 ,e2) (and (f e0) (f e1) (f e2))]
                          [else #f])))))
   (Expr : Expr (e) -> Expr ()
@@ -2385,7 +2386,7 @@
   ;; an empty free list when we reach the top, because we expect our programs
   ;; to be self-contained with no free-references.
   (let-values ([(e free*) (Expr e)])
-    (unless (null? free*) (error who "found unbound variables" free*))
+    (unless (null? free*) (error who "found unbound variables ~a" free*))
     e))
 
 ;;; pass: convert-closures : L11 -> L12
@@ -2480,8 +2481,8 @@
   (FreeBody : FreeBody (fbody env) -> FreeBody ())
   (Expr : Expr (e [env '()]) -> Expr ()
         [(closures ([,x* ,l* ,f** ...] ...) ,lbody)
-         (let ([env (fold-left
-                     (lambda (env x l) (cons (cons x l) env))
+         (let ([env (foldl
+                     (lambda (x l env) (cons (cons x l) env))
                      env x* l*)])
            (let ([lbody (LabelsBody lbody env)])
              `(closures ([,x* ,l* ,f** ...] ...) ,lbody)))]
@@ -2539,8 +2540,8 @@
                   [else (loop (cdr free*) (fx+ i 1))]))))
           (define build-closure-set*
             (lambda (x* l* f** cp free*)
-              (fold-left
-               (lambda (e* x l f*)
+              (foldl
+               (lambda (x l f* e*)
                  (let loop ([f* f*] [i 0] [e* e*])
                    (if (null? f*)
                        (cons `(primcall closure-code-set! ,x (label ,l)) e*)
@@ -2707,7 +2708,7 @@
           (guard (effect-primitive? pr))
           `(begin (primcall ,pr ,se* ...) (primcall void))]
          [(primcall ,pr ,se* ...)
-          (error who "unexpected primitive found" pr)])
+          (error who "unexpected primitive found ~a" pr)])
   (Effect : Expr (e) -> Effect ()
           [,se `(nop)]
           [(primcall ,pr ,[se*] ...)
@@ -2717,7 +2718,7 @@
            (guard (or (value-primitive? pr) (predicate-primitive? pr)))
            `(nop)]
           [(primcall ,pr ,se* ...)
-           (error who "unexpected primitive found" pr)])
+           (error who "unexpected primitive found ~a" pr)])
   (Predicate : Expr (e) -> Predicate ()
              [(quote ,c) (if c `(true) `(false))]
              [,x `(if (primcall eq? x (quote #f)) (false) (true))]
@@ -2746,7 +2747,7 @@
                      (false)
                      (true)))]
              [(primcall ,pr ,se* ...)
-              (error who "unexpected primitive found" pr)]))
+              (error who "unexpected primitive found ~a" pr)]))
 
 ;;; pass: expose-allocation-primitives : L16 -> L17
 ;;;
@@ -2792,7 +2793,7 @@
                              (guard (target-fixnum? c))
                              `(alloc ,closure-tag (quote ,(+ c 1)))]
                             [else (error who
-                                         "expected constant argument for make-closure primcall"
+                                         "expected constant argument for make-closure primcall ~a"
                                          (unparse-L16 v))])]
             [(box)
              (let ([t0 (make-tmp)] [t1 (make-tmp)])
@@ -3032,7 +3033,7 @@
                  [(eq? c #t) true-rep]
                  [(null? c) null-rep]
                  [(target-fixnum? c)
-                  (bitwise-arithmetic-shift-left c fixnum-shift)])]))
+                  (arithmetic-shift c fixnum-shift)])]))
 
 ;;; pass: expand-primitives : L21 -> L22
 ;;;
@@ -3081,7 +3082,7 @@
        [(primcall ,vpr)
         (case vpr
           [(void) void-rep]
-          [else (error who "unexpected value primitive" vpr)])]
+          [else (error who "unexpected value primitive ~a" vpr)])]
        [(primcall ,vpr ,[se])
         (case vpr
           [(car) `(mref ,se #f ,(- pair-tag))]
@@ -3089,7 +3090,7 @@
           [(unbox) `(mref ,se #f ,(- box-tag))]
           [(closure-code) `(mref ,se #f ,(- closure-tag))]
           [(vector-length) `(mref ,se #f ,(- vector-tag))]
-          [else (error who "unexpected value primitive" vpr)])]
+          [else (error who "unexpected value primitive ~a" vpr)])]
        [(primcall ,vpr ,[se0] ,[se1])
         (case vpr
           [(closure-ref) `(mref ,se0 ,se1 ,(- word-size closure-tag))]
@@ -3103,9 +3104,9 @@
           ;; width
           [(*) `(multiply ,se0 (shift-right ,se1 ,fixnum-shift))]
           [(/) `(shift-left (divide ,se0 ,se1) ,fixnum-shift)]
-          [else (error who "unexpected value primitive" vpr)])]
+          [else (error who "unexpected value primitive ~a" vpr)])]
        [(primcall ,vpr ,se* ...)
-        (error who "unexpected value primitive" vpr)])
+        (error who "unexpected value primitive ~a" vpr)])
   (Effect : Effect (e) -> Effect ()
           (definitions
             (define build-begin
@@ -3133,15 +3134,15 @@
              [($set-cdr!) `(mset! ,se0 #f ,(- word-size pair-tag) ,se1)]
              [($vector-length-set!) `(mset! ,se0 #f ,(- vector-tag) ,se1)]
              [(closure-code-set!) `(mset! ,se0 #f ,(- closure-tag) ,se1)]
-             [else (error who "unexpected effect primitive" epr)])]
+             [else (error who "unexpected effect primitive ~a" epr)])]
           [(primcall ,epr ,[se0] ,[se1] ,[se2])
            (case epr
              [(vector-set!) `(mset! ,se0 ,se1 ,(- word-size vector-tag) ,se2)]
              [(closure-data-set!)
               `(mset! ,se0 ,se1 ,(- word-size closure-tag) ,se2)]
-             [else (error who "unexpected effect primitive" epr)])]
+             [else (error who "unexpected effect primitive ~a" epr)])]
           [(primcall ,epr ,se* ...)
-           (error who "unexpected effect primitive" epr)])
+           (error who "unexpected effect primitive ~a" epr)])
   (Predicate : Predicate (p) -> Predicate ()
              (definitions
                (define build-begin
@@ -3169,7 +3170,7 @@
                 [(boolean?) `(= (logand ,se ,boolean-mask) ,boolean-tag)]
                 [(vector?) `(= (logand ,se ,vector-mask) ,vector-tag)]
                 [(box?) `(= (logand ,se ,box-mask) ,box-tag)]
-                [else (error who "unexpected predicate primitive" ppr)])]
+                [else (error who "unexpected predicate primitive ~a" ppr)])]
              [(primcall ,ppr ,[se0] ,[se1])
               (case ppr
                 [(eq? =) `(= ,se0 ,se1)]
@@ -3177,9 +3178,9 @@
                 [(<=) `(<= ,se0 ,se1)]
                 [(>) `(<= ,se1 ,se0)]
                 [(>=) `(< ,se1 ,se0)]
-                [else (error who "unexpected predicate primitive" ppr)])]
+                [else (error who "unexpected predicate primitive ~a" ppr)])]
              [(primcall ,ppr ,se* ...)
-              (error who "unexpected predicate primitive" ppr)]))
+              (error who "unexpected predicate primitive ~a" ppr)]))
 
 ;;; pass: generate-C : L22 -> printed-output
 ;;;
@@ -3296,8 +3297,8 @@
                     [(false) "0"]
                     [(begin ,e* ... ,p)
                      (string-join
-                      (fold-right (lambda (e s*) (cons (format-effect e) s*))
-                                  (list (format-predicate p)) e*)
+                      (foldr (lambda (e s*) (cons (format-effect e) s*))
+                             (list (format-predicate p)) e*)
                       ", ")])
   ;; transformer to format effects in predicate context into strings
   (format-effect : Effect (e) -> * (str)
@@ -3312,15 +3313,15 @@
                  [(nop) "0"]
                  [(begin ,e* ... ,e)
                   (string-join
-                   (fold-right (lambda (e s*) (cons (format-effect e) s*))
-                               (list (format-effect e)) e*)
+                   (foldr (lambda (e s*) (cons (format-effect e) s*))
+                          (list (format-effect e)) e*)
                    ", ")]
                  [(mset! ,se0 ,se1? ,i ,se2)
                   (if se1?
-                      (format "((*((ptr*)((long)~a + (long)~a + ~d))) = (ptr)~a)"
+                      (format "((*((ptr*)((long)~a + (long)~a + ~a))) = (ptr)~a)"
                               (format-simple-expr se0) (format-simple-expr se1?)
                               i (format-simple-expr se2))
-                      (format "((*((ptr*)((long)~a + ~d))) = (ptr)~a)"
+                      (format "((*((ptr*)((long)~a + ~a))) = (ptr)~a)"
                               (format-simple-expr se0) i (format-simple-expr se2)))])
   ;; formats simple expressions in to strings
   (format-simple-expr : SimpleExpr (se) -> * (str)
@@ -3336,10 +3337,10 @@
                       [(add ,se0 ,se1) (format-binop "+" se0 se1)]
                       [(mref ,se0 ,se1? ,i) 
                        (if se1?
-                           (format "(*((ptr)((long)~a + (long)~a + ~d)))"
+                           (format "(*((ptr)((long)~a + (long)~a + ~a)))"
                                    (format-simple-expr se0)
                                    (format-simple-expr se1?) i)
-                           (format "(*((ptr)((long)~a + ~d)))" (format-simple-expr se0) i))])
+                           (format "(*((ptr)((long)~a + ~a)))" (format-simple-expr se0) i))])
   ;; prints expressions in effect position into C statements
   (emit-effect : Effect (e) -> * ()
                [(if ,p0 ,e1 ,e2)
@@ -3351,16 +3352,16 @@
                [((label ,l) ,se* ...) (printf "  ~a;\n" (format-label-call l se*))]
                [(,se ,se* ...) (printf "  ~a;\n" (format-general-call se se*))]
                [(set! ,x ,rhs) (printf "  ~a;\n" (format-set! x rhs))]
-               [(nop) (if #f #f)]
+               [(nop) (void)]
                [(begin ,e* ... ,e)
                 (for-each emit-effect e*)
                 (emit-effect e)]
                [(mset! ,se0 ,se1? ,i ,se2)
                 (if se1?
-                    (printf "(*((ptr*)((long)~a + (long)~a + ~d))) = (ptr)~a;\n"
+                    (printf "(*((ptr*)((long)~a + (long)~a + ~a))) = (ptr)~a;\n"
                             (format-simple-expr se0) (format-simple-expr se1?)
                             i (format-simple-expr se2))
-                    (printf "(*((ptr*)((long)~a + ~d))) = (ptr)~a;\n"
+                    (printf "(*((ptr*)((long)~a + ~a))) = (ptr)~a;\n"
                             (format-simple-expr se0) i (format-simple-expr se2)))])
   ;; formats the right-hand side of a set! into a C expression
   (format-rhs : Rhs (rhs) -> * (str)
@@ -3368,9 +3369,9 @@
               [(,se ,se* ...) (format-general-call se se*)]
               [(alloc ,i ,se)
                (if (use-boehm?)
-                   (format "(ptr)((long)GC_MALLOC(~a) + ~dl)"
+                   (format "(ptr)((long)GC_MALLOC(~a) + ~al)"
                            (format-simple-expr se) i)
-                   (format "(ptr)((long)malloc(~a) + ~dl)"
+                   (format "(ptr)((long)malloc(~a) + ~al)"
                            (format-simple-expr se) i))]
               [,se (format-simple-expr se)])
   ;; emits a C program for our progam expression
@@ -3383,11 +3384,11 @@
               (define-syntax emit-predicate
                 (syntax-rules ()
                   [(_ PRED_P mask tag)
-                   (emit-c-macro PRED_P (x) "(((long)x & ~d) == ~d)" mask tag)]))
+                   (emit-c-macro PRED_P (x) "(((long)x & ~a) == ~a)" mask tag)]))
               (define-syntax emit-eq-predicate
                 (syntax-rules ()
                   [(_ PRED_P rep)
-                   (emit-c-macro PRED_P (x) "((long)x == ~d)" rep)]))
+                   (emit-c-macro PRED_P (x) "((long)x == ~a)" rep)]))
               (define-syntax emit-c-macro
                 (lambda (x)
                   (syntax-case x()
@@ -3411,14 +3412,14 @@
               (emit-eq-predicate NULL_P null-rep)
               (emit-eq-predicate VOID_P void-rep)
               (printf "typedef long* ptr;\n")
-              (emit-c-macro FIX (x) "((long)x << ~d)" fixnum-shift)
-              (emit-c-macro UNFIX (x) "((long)x >> ~d)" fixnum-shift)
-              (emit-c-macro UNBOX (x) "((ptr)*((ptr)((long)x - ~d)))" box-tag)
-              (emit-c-macro VECTOR_LENGTH_S (x) "((ptr)*((ptr)((long)x - ~d)))" vector-tag)
+              (emit-c-macro FIX (x) "((long)x << ~a)" fixnum-shift)
+              (emit-c-macro UNFIX (x) "((long)x >> ~a)" fixnum-shift)
+              (emit-c-macro UNBOX (x) "((ptr)*((ptr)((long)x - ~a)))" box-tag)
+              (emit-c-macro VECTOR_LENGTH_S (x) "((ptr)*((ptr)((long)x - ~a)))" vector-tag)
               (emit-c-macro VECTOR_LENGTH_C (x) "UNFIX(VECTOR_LENGTH_S(x))")
-              (emit-c-macro VECTOR_REF (x i) "((ptr)*((ptr)((long)x - ~d + ((i+1) * ~d))))" vector-tag word-size)
-              (emit-c-macro CAR (x) "((ptr)*((ptr)((long)x - ~d)))" pair-tag)
-              (emit-c-macro CDR (x) "((ptr)*((ptr)((long)x - ~d + ~d)))" pair-tag word-size)
+              (emit-c-macro VECTOR_REF (x i) "((ptr)*((ptr)((long)x - ~a + ((i+1) * ~a))))" vector-tag word-size)
+              (emit-c-macro CAR (x) "((ptr)*((ptr)((long)x - ~a)))" pair-tag)
+              (emit-c-macro CDR (x) "((ptr)*((ptr)((long)x - ~a + ~a)))" pair-tag word-size)
               (printf "void print_scheme_value(ptr x) {\n")
               (printf "  long i, veclen;\n")
               (printf "  ptr p;\n")
@@ -3478,67 +3479,66 @@
 ;;;   ...
 ;;;   pass-to-generate-c)
 ;;;
-(define-syntax define-compiler
-  (lambda (x)
-    (syntax-parse x
-      [(_ name (pass unparser) ... gen-c)
-       ;(with-implicit (#'name all-passes trace-passes)
-       #:with all-passes (format-id #'name "all-passes")
-       #:with trace-passes (format-id #'name "trace-passes")
-       #`(begin
-           (define all-passes '(pass ... gen-c))
-           (define trace-passes
-             (let ([passes '()])
-               (case-lambda
-                 [() passes]
-                 [(x)
-                  (cond
-                    [(symbol? x)
-                     (unless (memq x all-passes)
-                       (error 'trace-passes "invalid pass name" x))
-                     (set! passes (list x))]
-                    [(list? x)
-                     (unless (for-all (lambda (x) (memq x all-passes)) x)
-                       (error 'trace-passes
-                              "one or more invalid pass names" x))
-                     (set! passes x)]
-                    [(eq? x #t) (set! passes all-passes)]
-                    [(eq? x #f) (set! passes '())]
-                    [else (error 'trace-passes
-                                 "invalid pass specifier" x)])])))
-           (define name
-             (lambda (x)
-               #,(let loop ([pass* #'(pass ...)]
-                            [unparser* #'(unparser ...)])
-                   (if (null? pass*)
-                       #'(begin
-                           (when (file-exists? "t.c") (delete-file "t.c"))
-                           (with-output-to-file "t.c"
-                             (lambda () (gen-c x)))
-                           (when (memq 'gen-c (trace-passes))
-                             (printf "output of pass ~s~%" 'gen-c)
-                             (call-with-input-file "t.c"
-                               (lambda (ip)
-                                 (let f ()
-                                   (let ([s (get-string-n ip 512)])
-                                     (unless (eof-object? s)
-                                       (display s)
-                                       (f)))))))
-                           (system
-                            (format "gcc -m64 ~a t.c -o t"
-                                    (if (use-boehm?) "-lgc" "")))
-                           (when (file-exists? "t.out")
-                             (delete-file "t.out"))
-                           (system "./t > t.out")
-                           (call-with-input-file "t.out" read))
-                       (with-syntax ([pass (car pass*)]
-                                     [unparser (car unparser*)])
-                         #`(let ([x (pass x)])
-                             (when (memq 'pass (trace-passes))
-                               (printf "output of pass ~s~%" 'pass)
-                               (pretty-print (unparser x)))
-                             #,(loop (cdr pass*)
-                                     (cdr unparser*)))))))))])))
+(define-syntax (define-compiler x)
+  (syntax-parse x
+    [(_ name (pass unparser) ... gen-c)
+     ;(with-implicit (#'name all-passes trace-passes)
+     #:with all-passes (format-id #'name "all-passes")
+     #:with trace-passes (format-id #'name "trace-passes")
+     #`(begin
+         (define all-passes '(pass ... gen-c))
+         (define trace-passes
+           (let ([passes '()])
+             (case-lambda
+               [() passes]
+               [(x)
+                (cond
+                  [(symbol? x)
+                   (unless (memq x all-passes)
+                     (error 'trace-passes "invalid pass name ~a" x))
+                   (set! passes (list x))]
+                  [(list? x)
+                   (unless (andmap (lambda (x) (memq x all-passes)) x)
+                     (error 'trace-passes
+                            "one or more invalid pass names ~a" x))
+                   (set! passes x)]
+                  [(eq? x #t) (set! passes all-passes)]
+                  [(eq? x #f) (set! passes '())]
+                  [else (error 'trace-passes
+                               "invalid pass specifier ~a" x)])])))
+         (define name
+           (lambda (x)
+             #,(let loop ([pass* #'(pass ...)]
+                          [unparser* #'(unparser ...)])
+                 (if (null? pass*)
+                     #'(begin
+                         (when (file-exists? "t.c") (delete-file "t.c"))
+                         (with-output-to-file "t.c"
+                           (lambda () (gen-c x)))
+                         (when (memq 'gen-c (trace-passes))
+                           (printf "output of pass ~s~%" 'gen-c)
+                           (call-with-input-file "t.c"
+                             (lambda (ip)
+                               (let f ()
+                                 (let ([s (read-string ip 512)])
+                                   (unless (eof-object? s)
+                                     (display s)
+                                     (f)))))))
+                         (system
+                          (format "gcc -m64 ~a t.c -o t"
+                                  (if (use-boehm?) "-lgc" "")))
+                         (when (file-exists? "t.out")
+                           (delete-file "t.out"))
+                         (system "./t > t.out")
+                         (call-with-input-file "t.out" read))
+                     (with-syntax ([pass (stx-car pass*)]
+                                   [unparser (stx-car unparser*)])
+                       #`(let ([x (pass x)])
+                           (when (memq 'pass (trace-passes))
+                             (printf "output of pass ~s~%" 'pass)
+                             (pretty-print (unparser x)))
+                           #,(loop (stx-cdr pass*)
+                                   (stx-cdr unparser*)))))))))]))
 
 ;;; the definition of our compiler that pulls in all of our passes and runs
 ;;; them in sequence checking to see if the programmer wants them traced.
