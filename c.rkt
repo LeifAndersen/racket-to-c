@@ -1,4 +1,4 @@
-#lang racket
+#lang nanopass/base
 ;;; Copyright (c) 2013 Andrew W. Keep
 ;;; See the accompanying file Copyright for details
 ;;;
@@ -190,10 +190,12 @@
          trace-passes
          all-passes)
 
-(require nanopass
-         racket/fixnum
+(require racket/fixnum
+         racket/pretty
+         racket/system
          (for-syntax syntax/parse
                      syntax/stx
+                     nanopass/base
                      racket/syntax))
 
 ;;; As of yet untested feature for using the boehm GC
