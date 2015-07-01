@@ -3522,7 +3522,7 @@
                            (call-with-input-file "t.c"
                              (lambda (ip)
                                (let f ()
-                                 (let ([s (read-string ip 512)])
+                                 (let ([s (read-string 512 ip)])
                                    (unless (eof-object? s)
                                      (display s)
                                      (f)))))))
