@@ -1,4 +1,4 @@
-#lang nanopass/base
+#lang nanopass
 ;;; Copyright (c) 2013 Andrew W. Keep
 ;;; See the accompanying file Copyright for details
 ;;;
